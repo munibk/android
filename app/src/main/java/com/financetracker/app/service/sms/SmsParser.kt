@@ -77,7 +77,7 @@ object SmsParser {
     )
 
     private val UPI_REF_PATTERN = Regex(
-        """(?:UPI|ref\.?|txn\.?|transaction|refno)[:\s]*([A-Za-z0-9]{8,})""",
+        """(?:UPI\s+Ref(?:\s+No)?|UPI|ref\.?\s*no\.?|txn\.?\s*(?:id|no)?|transaction\s*(?:id|no)?|refno)[:\s]*([A-Za-z0-9]{8,})""",
         RegexOption.IGNORE_CASE
     )
 
