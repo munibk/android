@@ -1,0 +1,238 @@
+package com.financetracker.app.presentation.ui.settings
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.financetracker.app.data.repository.SyncState
+import com.financetracker.app.presentation.viewmodel.ConnectionTestResult
+import com.financetracker.app.presentation.viewmodel.SettingsViewModel
+import java.text.SimpleDateFormat
+import java.util.*
+
+private val dateFmt = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SettingsScreen(
+    onBack: () -> Unit,
+    vm: SettingsViewModel = hiltViewModel()
+) {
+    val state      by vm.uiState.collectAsStateWithLifecycle()
+    val syncStatus by vm.syncStatus.collectAsStateWithLifecycle()
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Settings") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, "Back")
+                    }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            // ── Gmail IMAP section ──────────────────────────────────────────
+            SectionHeader("Gmail IMAP")
+            GmailSection(
+                hasCredentials = state.hasCredentials,
+                currentEmail   = state.gmailEmail,
+                testResult     = state.connectionTest,
+                onSave         = { email, pass -> vm.saveGmailCredentials(email, pass) },
+                onTest         = { email, pass -> vm.testConnection(email, pass) },
+                onDisconnect   = { vm.clearGmailCredentials() }
+            )
+
+            // ── SMS section ────────────────────────────────────────────────
+            SectionHeader("SMS Sync")
+            ListItem(
+                headlineContent = { Text("Enable SMS Sync") },
+                supportingContent = {
+                    if (syncStatus.lastSyncMs > 0) {
+                        Text("Last synced: ${dateFmt.format(Date(syncStatus.lastSyncMs))}")
+                    }
+                },
+                trailingContent = {
+                    Switch(checked = state.smsEnabled, onCheckedChange = vm::setSmsEnabled)
+                }
+            )
+
+            // ── Sync interval ──────────────────────────────────────────────
+            SectionHeader("Sync Frequency")
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(1, 6, 12, 24).forEach { hours ->
+                    FilterChip(
+                        selected = state.syncIntervalHours == hours,
+                        onClick  = { vm.setSyncInterval(hours) },
+                        label    = { Text("${hours}h") }
+                    )
+                }
+            }
+
+            // ── Sync status indicator ──────────────────────────────────────
+            if (syncStatus.state == SyncState.RUNNING) {
+                ListItem(
+                    headlineContent = { Text("Syncing…") },
+                    leadingContent  = { CircularProgressIndicator(modifier = Modifier.size(20.dp)) }
+                )
+            }
+            if (syncStatus.state == SyncState.ERROR) {
+                ListItem(
+                    headlineContent = { Text("Sync Error", color = MaterialTheme.colorScheme.error) },
+                    supportingContent = { Text(syncStatus.errorMessage) }
+                )
+            }
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+            // ── About ──────────────────────────────────────────────────────
+            SectionHeader("About")
+            ListItem(
+                headlineContent = { Text("Finance Tracker") },
+                supportingContent = { Text("Version 1.0 — Built with Kotlin + Jetpack Compose") }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionHeader(title: String) {
+    Text(
+        text     = title,
+        style    = MaterialTheme.typography.labelLarge,
+        color    = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp)
+    )
+}
+
+@Composable
+private fun GmailSection(
+    hasCredentials: Boolean,
+    currentEmail: String,
+    testResult: ConnectionTestResult,
+    onSave: (String, String) -> Unit,
+    onTest: (String, String) -> Unit,
+    onDisconnect: () -> Unit
+) {
+    var email       by remember { mutableStateOf(currentEmail) }
+    var password    by remember { mutableStateOf("") }
+    var showPass    by remember { mutableStateOf(false) }
+    var expanded    by remember { mutableStateOf(!hasCredentials) }
+
+    ListItem(
+        headlineContent = {
+            Text(if (hasCredentials) "Connected: $currentEmail" else "Not connected")
+        },
+        supportingContent = {
+            Text(if (hasCredentials) "Tap to manage" else "Add Gmail App Password to enable email sync")
+        },
+        leadingContent  = {
+            Icon(
+                Icons.Default.Email,
+                contentDescription = null,
+                tint = if (hasCredentials) Color(0xFF43A047) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        trailingContent = {
+            IconButton(onClick = { expanded = !expanded }) {
+                Icon(
+                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                    contentDescription = null
+                )
+            }
+        }
+    )
+
+    if (expanded) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Gmail Address") },
+                modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
+            )
+            OutlinedTextField(
+                value = password,
+                onValueChange = { if (it.length <= 16) password = it },
+                label = { Text("App Password (16 chars)") },
+                modifier = Modifier.fillMaxWidth(),
+                visualTransformation = if (showPass) VisualTransformation.None else PasswordVisualTransformation(),
+                trailingIcon = {
+                    IconButton(onClick = { showPass = !showPass }) {
+                        Icon(
+                            if (showPass) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = null
+                        )
+                    }
+                }
+            )
+
+            // Connection test result
+            when (testResult) {
+                is ConnectionTestResult.Testing ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Testing connection…")
+                    }
+                is ConnectionTestResult.Success ->
+                    Text("✓ Connection successful", color = Color(0xFF43A047))
+                is ConnectionTestResult.Failure ->
+                    Text("✗ ${testResult.message}", color = MaterialTheme.colorScheme.error)
+                else -> {}
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick  = { onTest(email, password) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Test") }
+                Button(
+                    onClick  = { onSave(email, password); expanded = false },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Save") }
+            }
+
+            if (hasCredentials) {
+                TextButton(
+                    onClick    = { onDisconnect(); expanded = false },
+                    colors     = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                ) { Text("Disconnect") }
+            }
+
+            Text(
+                "Generate an App Password at: Google Account → Security → 2-Step Verification → App Passwords",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
