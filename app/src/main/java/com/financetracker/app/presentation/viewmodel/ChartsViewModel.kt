@@ -45,12 +45,10 @@ class ChartsViewModel @Inject constructor(
         _selectedMonth
     ) { period, cats, spends, month ->
         ChartsUiState(
-            period             = period as ChartPeriod,
-            @Suppress("UNCHECKED_CAST")
-            selectedCategories = cats as Set<String>,
-            @Suppress("UNCHECKED_CAST")
-            categorySpends     = spends as List<CategorySpend>,
-            selectedMonth      = month as YearMonth
+            period             = period,
+            selectedCategories = cats,
+            categorySpends     = spends,
+            selectedMonth      = month
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ChartsUiState())
 

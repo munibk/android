@@ -35,22 +35,20 @@ class CreditCardsViewModel @Inject constructor(
     val uiState: StateFlow<CreditCardUiState> = combine(
         repo.getAllCards(),
         _selectedCardId.flatMapLatest { id ->
-            if (id == null) flowOf(emptyList())
+            if (id == null) flowOf<List<TransactionEntity>>(emptyList())
             else repo.getTransactionsForCard(id, startMs, endMs)
         },
         _selectedCardId.flatMapLatest { id ->
-            if (id == null) flowOf(null)
+            if (id == null) flowOf<Double?>(null)
             else repo.getTotalSpendForCard(id, startMs, endMs)
         },
         _selectedCardId
     ) { cards, txns, spend, selectedId ->
         CreditCardUiState(
-            @Suppress("UNCHECKED_CAST")
-            cards            = cards as List<CreditCardEntity>,
-            selectedCardId   = selectedId as? Long,
-            @Suppress("UNCHECKED_CAST")
-            cardTransactions = txns as List<TransactionEntity>,
-            cardSpend        = (spend as? Double) ?: 0.0
+            cards            = cards,
+            selectedCardId   = selectedId,
+            cardTransactions = txns,
+            cardSpend        = spend ?: 0.0
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CreditCardUiState())
 
