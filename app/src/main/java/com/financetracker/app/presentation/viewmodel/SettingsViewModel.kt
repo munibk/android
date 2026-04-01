@@ -8,6 +8,7 @@ import com.financetracker.app.service.gmail.ImapCredentialsManager
 import com.financetracker.app.service.gmail.ImapGmailFetcher
 import com.financetracker.app.service.gmail.ImapResult
 import com.financetracker.app.workers.GmailFetchWorker
+import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
