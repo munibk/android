@@ -16,9 +16,10 @@ class ImapCredentialsManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
-        private const val PREFS_FILE = "gmail_credentials"
-        private const val KEY_EMAIL  = "gmail_email"
+        private const val PREFS_FILE   = "gmail_credentials"
+        private const val KEY_EMAIL    = "gmail_email"
         private const val KEY_PASSWORD = "gmail_app_password"
+        private const val KEY_SYNC_FROM_YEAR = "gmail_sync_from_year"
     }
 
     private val masterKey by lazy {
@@ -49,6 +50,29 @@ class ImapCredentialsManager @Inject constructor(
     fun getAppPassword(): String? = prefs.getString(KEY_PASSWORD, null)
 
     fun hasCredentials(): Boolean = !getEmail().isNullOrBlank() && !getAppPassword().isNullOrBlank()
+
+    fun saveSyncFromYear(year: Int) {
+        prefs.edit().putInt(KEY_SYNC_FROM_YEAR, year).apply()
+    }
+
+    fun getSyncFromYear(): Int {
+        // Default: current year - 1 (last 1 year)
+        val defaultYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1
+        return prefs.getInt(KEY_SYNC_FROM_YEAR, defaultYear)
+    }
+
+    fun getSyncFromMs(): Long {
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.YEAR, getSyncFromYear())
+            set(java.util.Calendar.MONTH, java.util.Calendar.JANUARY)
+            set(java.util.Calendar.DAY_OF_MONTH, 1)
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+        }
+        return cal.timeInMillis
+    }
 
     fun clearCredentials() {
         prefs.edit()

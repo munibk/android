@@ -14,7 +14,6 @@ import com.financetracker.app.data.repository.CreditCardRepository
 import com.financetracker.app.data.repository.SyncStatusRepository
 import com.financetracker.app.data.repository.TransactionRepository
 import com.financetracker.app.service.classifier.CategoryClassifier
-import com.financetracker.app.service.sms.SmsReaderService
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
@@ -26,7 +25,6 @@ import java.util.concurrent.TimeUnit
 class SyncWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
-    private val smsReader: SmsReaderService,
     private val transactionRepo: TransactionRepository,
     private val categoryRepo: CategoryRepository,
     private val creditCardRepo: CreditCardRepository,
@@ -79,16 +77,15 @@ class SyncWorker @AssistedInject constructor(
         syncStatusRepo.setRunning()
         createNotificationChannels(applicationContext)
 
-        // 1. Re-scan SMS inbox
-        val imported = smsReader.readAndImportInbox()
+        // SMS inbox scanning removed — RECEIVE_SMS captures new messages live via SmsBroadcastReceiver
 
-        // 2. Re-classify any "Other" category transactions
+        // 1. Re-classify any "Other" category transactions
         reclassifyOtherTransactions()
 
-        // 3. Check budget alerts
+        // 2. Check budget alerts
         checkBudgetAlerts()
 
-        // 4. Check credit card due date alerts
+        // 3. Check credit card due date alerts
         checkCreditCardDueAlerts()
 
         syncStatusRepo.setIdle()

@@ -26,7 +26,8 @@ data class SettingsUiState(
     val hasCredentials: Boolean = false,
     val connectionTest: ConnectionTestResult = ConnectionTestResult.Idle,
     val smsEnabled: Boolean = true,
-    val syncIntervalHours: Int = 6
+    val syncIntervalHours: Int = 6,
+    val syncFromYear: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR) - 1
 )
 
 @HiltViewModel
@@ -40,22 +41,26 @@ class SettingsViewModel @Inject constructor(
     private val _connectionTest = MutableStateFlow<ConnectionTestResult>(ConnectionTestResult.Idle)
     private val _smsEnabled     = MutableStateFlow(true)
     private val _syncInterval   = MutableStateFlow(6)
+    private val _syncFromYear   = MutableStateFlow(credentialsManager.getSyncFromYear())
 
     val uiState: StateFlow<SettingsUiState> = combine(
         _connectionTest,
         _smsEnabled,
-        _syncInterval
-    ) { test, sms, interval ->
+        _syncInterval,
+        _syncFromYear
+    ) { test, sms, interval, year ->
         SettingsUiState(
             gmailEmail        = credentialsManager.getEmail() ?: "",
             hasCredentials    = credentialsManager.hasCredentials(),
             connectionTest    = test,
             smsEnabled        = sms,
-            syncIntervalHours = interval
+            syncIntervalHours = interval,
+            syncFromYear      = year
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState(
         gmailEmail     = credentialsManager.getEmail() ?: "",
-        hasCredentials = credentialsManager.hasCredentials()
+        hasCredentials = credentialsManager.hasCredentials(),
+        syncFromYear   = credentialsManager.getSyncFromYear()
     ))
 
     val syncStatus = syncStatusRepo.status
@@ -86,6 +91,11 @@ class SettingsViewModel @Inject constructor(
     fun setSmsEnabled(enabled: Boolean) { _smsEnabled.value = enabled }
 
     fun setSyncInterval(hours: Int) { _syncInterval.value = hours }
+
+    fun setSyncFromYear(year: Int) {
+        credentialsManager.saveSyncFromYear(year)
+        _syncFromYear.value = year
+    }
 
     fun fetchGmailNow() {
         GmailFetchWorker.enqueueOneTime(context)

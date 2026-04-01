@@ -2,7 +2,9 @@ package com.financetracker.app.service.gmail
 
 import com.sun.mail.imap.IMAPFolder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Properties
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,19 +49,31 @@ class ImapGmailFetcher @Inject constructor(
             val email = credentialsManager.getEmail() ?: return@withContext ImapResult.AuthError("No credentials")
             val password = credentialsManager.getAppPassword() ?: return@withContext ImapResult.AuthError("No credentials")
 
+            // On first sync (lastSyncMs == 0), use the user-selected sync-from year
+            val effectiveSince = if (lastSyncMs == 0L) {
+                credentialsManager.getSyncFromMs()
+            } else {
+                lastSyncMs
+            }
+
             var attempt = 0
             var lastError: Exception? = null
 
             while (attempt < maxRetries) {
                 try {
-                    return@withContext doFetch(email, password, lastSyncMs)
+                    // runInterruptible makes blocking Java I/O actually cancellable by the timeout
+                    val result = withTimeoutOrNull(30_000L) {
+                        runInterruptible { doFetch(email, password, effectiveSince) }
+                    }
+                    if (result != null) return@withContext result
+                    return@withContext ImapResult.NetworkError("Connection timed out — check your network and try again")
                 } catch (e: AuthenticationFailedException) {
                     return@withContext ImapResult.AuthError(e.message ?: "Authentication failed")
                 } catch (e: MessagingException) {
                     lastError = e
                     attempt++
                     if (attempt < maxRetries) {
-                        Thread.sleep((1000L * (1 shl attempt))) // exponential backoff
+                        Thread.sleep((1000L * (1 shl attempt)))
                     }
                 }
             }
@@ -72,8 +86,9 @@ class ImapGmailFetcher @Inject constructor(
             put("mail.imap.port", IMAP_PORT)
             put("mail.imap.ssl.enable", "true")
             put("mail.imap.ssl.protocols", "TLSv1.2")
-            put("mail.imap.connectiontimeout", "10000")
-            put("mail.imap.timeout", "15000")
+            put("mail.imap.connectiontimeout", "15000")
+            put("mail.imap.timeout", "20000")
+            put("mail.imap.writetimeout", "20000")
         }
 
         val session = Session.getInstance(props)

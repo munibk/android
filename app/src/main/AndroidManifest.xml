@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- SMS Permissions -->
-    <uses-permission android:name="android.permission.READ_SMS" />
+    <!-- SMS: RECEIVE_SMS captures new incoming messages live via SmsBroadcastReceiver -->
+    <!-- READ_SMS is restricted on Android 10+ for sideloaded apps and is not used -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
 
     <!-- Network -->

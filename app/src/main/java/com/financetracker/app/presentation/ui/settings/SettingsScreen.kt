@@ -1,8 +1,12 @@
 package com.financetracker.app.presentation.ui.settings
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -41,12 +45,27 @@ fun SettingsScreen(
     val syncStatus by vm.syncStatus.collectAsStateWithLifecycle()
     val context    = LocalContext.current
 
+    val activity = LocalActivity.current
+
     var hasSmsPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) ==
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) ==
                     PackageManager.PERMISSION_GRANTED
         )
     }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                hasSmsPermission = ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.RECEIVE_SMS
+                ) == PackageManager.PERMISSION_GRANTED
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val smsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
@@ -84,6 +103,12 @@ fun SettingsScreen(
             )
             if (state.hasCredentials) {
                 var syncQueued by remember { mutableStateOf(false) }
+                // Reset syncQueued when sync finishes
+                LaunchedEffect(syncStatus.state) {
+                    if (syncStatus.state != com.financetracker.app.data.repository.SyncState.RUNNING) {
+                        syncQueued = false
+                    }
+                }
                 ListItem(
                     headlineContent = { Text(if (syncQueued) "Sync queued…" else "Fetch Gmail Now") },
                     supportingContent = { Text("Runs an immediate Gmail import in the background") },
@@ -116,19 +141,39 @@ fun SettingsScreen(
                 }
             )
             if (!hasSmsPermission) {
+                val permanentlyDenied = activity != null &&
+                    !activity.shouldShowRequestPermissionRationale(Manifest.permission.RECEIVE_SMS) &&
+                    ContextCompat.checkSelfPermission(context, Manifest.permission.RECEIVE_SMS) !=
+                        PackageManager.PERMISSION_GRANTED
+
                 ListItem(
                     headlineContent = { Text("SMS Permission Required") },
-                    supportingContent = { Text("Tap Grant to allow reading bank SMS messages") },
+                    supportingContent = {
+                        Text(
+                            if (permanentlyDenied)
+                                "Permission blocked — tap Open Settings to enable it manually"
+                            else
+                                "Allow to automatically capture new bank SMS messages"
+                        )
+                    },
                     leadingContent = {
                         Icon(Icons.Default.Sms, contentDescription = null,
                             tint = MaterialTheme.colorScheme.error)
                     },
                     trailingContent = {
                         Button(onClick = {
-                            smsPermissionLauncher.launch(
-                                arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
-                            )
-                        }) { Text("Grant") }
+                            if (permanentlyDenied) {
+                                // Send user to App Settings since dialog won't show
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.fromParts("package", context.packageName, null)
+                                }
+                                context.startActivity(intent)
+                            } else {
+                                smsPermissionLauncher.launch(
+                                    arrayOf(Manifest.permission.RECEIVE_SMS)
+                                )
+                            }
+                        }) { Text(if (permanentlyDenied) "Open Settings" else "Grant") }
                     }
                 )
             }
