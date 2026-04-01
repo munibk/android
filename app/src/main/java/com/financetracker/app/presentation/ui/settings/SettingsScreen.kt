@@ -19,8 +19,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
-import androidx.core.content.PermissionChecker
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financetracker.app.data.repository.SyncState
@@ -41,9 +41,17 @@ fun SettingsScreen(
     val syncStatus by vm.syncStatus.collectAsStateWithLifecycle()
     val context    = LocalContext.current
 
+    var hasSmsPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) ==
+                    PackageManager.PERMISSION_GRANTED
+        )
+    }
     val smsPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
-    ) { /* permissions result handled by system */ }
+    ) { result ->
+        hasSmsPermission = result[Manifest.permission.READ_SMS] == true
+    }
 
     Scaffold(
         topBar = {
@@ -107,10 +115,6 @@ fun SettingsScreen(
                     Switch(checked = state.smsEnabled, onCheckedChange = vm::setSmsEnabled)
                 }
             )
-            val hasSmsPermission = remember(context) {
-                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) ==
-                        PermissionChecker.PERMISSION_GRANTED
-            }
             if (!hasSmsPermission) {
                 ListItem(
                     headlineContent = { Text("SMS Permission Required") },
@@ -146,10 +150,48 @@ fun SettingsScreen(
 
             // ── Sync status indicator ──────────────────────────────────────
             if (syncStatus.state == SyncState.RUNNING) {
-                ListItem(
-                    headlineContent = { Text("Syncing…") },
-                    leadingContent  = { CircularProgressIndicator(modifier = Modifier.size(20.dp)) }
-                )
+                val found     = syncStatus.emailsFound
+                val processed = syncStatus.emailsProcessed
+                val newTx     = syncStatus.newTransactions
+                val progress  = if (found > 0) processed.toFloat() / found else 0f
+
+                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                if (found == 0) "Connecting to Gmail…"
+                                else "Reading emails… $processed / $found",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                        if (newTx > 0) {
+                            Text(
+                                "+$newTx new",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    if (found > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        LinearProgressIndicator(
+                            progress = { progress },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            "${(progress * 100).toInt()}% complete",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
             if (syncStatus.state == SyncState.ERROR) {
                 ListItem(

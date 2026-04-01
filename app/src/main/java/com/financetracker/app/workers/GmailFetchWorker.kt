@@ -68,32 +68,50 @@ class GmailFetchWorker @AssistedInject constructor(
 
         return when (val result = fetcher.fetchEmails(lastSync)) {
             is ImapResult.Success -> {
+                val total = result.emails.size
+                var processed = 0
+                var newCount = 0
+
+                syncStatusRepo.setProgress(
+                    emailsFound = total,
+                    emailsProcessed = 0,
+                    newTransactions = 0
+                )
+
                 result.emails.forEach { email ->
-                    val parsed = parser.parse(email) ?: return@forEach
-                    if (existingHashes.contains(parsed.dedupHash)) return@forEach
+                    val parsed = parser.parse(email)
+                    processed++
 
-                    val category = classifier.classify(parsed.rawText, parsed.merchant)
-                    val txId = transactionRepo.insertTransaction(
-                        TransactionEntity(
-                            amount    = parsed.amount,
-                            merchant  = parsed.merchant,
-                            category  = category,
-                            date      = parsed.dateMs,
-                            source    = "Gmail",
-                            rawText   = parsed.rawText,
-                            isCredit  = parsed.isCredit,
-                            dedupHash = parsed.dedupHash
+                    if (parsed != null && !existingHashes.contains(parsed.dedupHash)) {
+                        val category = classifier.classify(parsed.rawText, parsed.merchant)
+                        val txId = transactionRepo.insertTransaction(
+                            TransactionEntity(
+                                amount    = parsed.amount,
+                                merchant  = parsed.merchant,
+                                category  = category,
+                                date      = parsed.dateMs,
+                                source    = "Gmail",
+                                rawText   = parsed.rawText,
+                                isCredit  = parsed.isCredit,
+                                dedupHash = parsed.dedupHash
+                            )
                         )
-                    )
-                    existingHashes.add(parsed.dedupHash)
+                        existingHashes.add(parsed.dedupHash)
+                        newCount++
 
-                    // Auto-link to credit card if last4 matches
-                    parsed.last4Digits?.let { last4 ->
-                        val card = creditCardRepo.getCardByLast4(last4)
-                        if (card != null && txId > 0) {
-                            creditCardRepo.linkTransaction(card.id, txId)
+                        parsed.last4Digits?.let { last4 ->
+                            val card = creditCardRepo.getCardByLast4(last4)
+                            if (card != null && txId > 0) {
+                                creditCardRepo.linkTransaction(card.id, txId)
+                            }
                         }
                     }
+
+                    syncStatusRepo.setProgress(
+                        emailsFound = total,
+                        emailsProcessed = processed,
+                        newTransactions = newCount
+                    )
                 }
                 syncStatusRepo.setIdle()
                 Result.success()
