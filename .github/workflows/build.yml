@@ -52,11 +52,23 @@ jobs:
           fi
           chmod +x ./gradlew
 
-      # Step 7: Decode keystore from GitHub Secret and place it for signing
+      # Step 7: Decode keystore and convert to JKS format (Android-compatible)
       - name: Decode Keystore
         run: |
           mkdir -p app/keystore
-          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/keystore/release.jks
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > app/keystore/release-src.p12
+          keytool -importkeystore \
+            -srckeystore app/keystore/release-src.p12 \
+            -destkeystore app/keystore/release.jks \
+            -deststoretype JKS \
+            -srcalias "${{ secrets.KEY_ALIAS }}" \
+            -destalias "${{ secrets.KEY_ALIAS }}" \
+            -srcstorepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -deststorepass "${{ secrets.KEYSTORE_PASSWORD }}" \
+            -srckeypass "${{ secrets.KEY_PASSWORD }}" \
+            -destkeypass "${{ secrets.KEY_PASSWORD }}" \
+            -noprompt
+          rm -f app/keystore/release-src.p12
 
       # Step 8: Build the signed release APK
       - name: Build Release APK
