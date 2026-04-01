@@ -380,8 +380,8 @@ private fun OAuthSection(
 
     if (!hasCredentials) {
         Text(
-            "Your Google account needs the Gmail scope. If prompted, tick \
-\"Read, compose, send and permanently delete all your email from Gmail\".",
+            "Your Google account needs the Gmail scope. If prompted, tick " +
+            "\"Read, compose, send and permanently delete all your email from Gmail\".",
             style    = MaterialTheme.typography.bodySmall,
             color    = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
