@@ -28,7 +28,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financetracker.app.data.repository.SyncState
 import com.financetracker.app.presentation.viewmodel.ConnectionTestResult
@@ -55,7 +55,7 @@ fun SettingsScreen(
                     PackageManager.PERMISSION_GRANTED
         )
     }
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycleOwner = context as LifecycleOwner
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
