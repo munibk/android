@@ -1,5 +1,8 @@
 package com.financetracker.app.presentation.ui.settings
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,10 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.core.content.PermissionChecker
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financetracker.app.data.repository.SyncState
@@ -33,6 +39,11 @@ fun SettingsScreen(
 ) {
     val state      by vm.uiState.collectAsStateWithLifecycle()
     val syncStatus by vm.syncStatus.collectAsStateWithLifecycle()
+    val context    = LocalContext.current
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { /* permissions result handled by system */ }
 
     Scaffold(
         topBar = {
@@ -63,6 +74,23 @@ fun SettingsScreen(
                 onTest         = { email, pass -> vm.testConnection(email, pass) },
                 onDisconnect   = { vm.clearGmailCredentials() }
             )
+            if (state.hasCredentials) {
+                var syncQueued by remember { mutableStateOf(false) }
+                ListItem(
+                    headlineContent = { Text(if (syncQueued) "Sync queued…" else "Fetch Gmail Now") },
+                    supportingContent = { Text("Runs an immediate Gmail import in the background") },
+                    leadingContent = {
+                        Icon(Icons.Default.Sync, contentDescription = null,
+                            tint = if (syncQueued) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
+                    },
+                    trailingContent = {
+                        Button(
+                            onClick = { vm.fetchGmailNow(); syncQueued = true },
+                            enabled = !syncQueued
+                        ) { Text("Sync Now") }
+                    }
+                )
+            }
 
             // ── SMS section ────────────────────────────────────────────────
             SectionHeader("SMS Sync")
@@ -71,12 +99,35 @@ fun SettingsScreen(
                 supportingContent = {
                     if (syncStatus.lastSyncMs > 0) {
                         Text("Last synced: ${dateFmt.format(Date(syncStatus.lastSyncMs))}")
+                    } else {
+                        Text("Reads bank SMS from your inbox automatically")
                     }
                 },
                 trailingContent = {
                     Switch(checked = state.smsEnabled, onCheckedChange = vm::setSmsEnabled)
                 }
             )
+            val hasSmsPermission = remember(context) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) ==
+                        PermissionChecker.PERMISSION_GRANTED
+            }
+            if (!hasSmsPermission) {
+                ListItem(
+                    headlineContent = { Text("SMS Permission Required") },
+                    supportingContent = { Text("Tap Grant to allow reading bank SMS messages") },
+                    leadingContent = {
+                        Icon(Icons.Default.Sms, contentDescription = null,
+                            tint = MaterialTheme.colorScheme.error)
+                    },
+                    trailingContent = {
+                        Button(onClick = {
+                            smsPermissionLauncher.launch(
+                                arrayOf(Manifest.permission.READ_SMS, Manifest.permission.RECEIVE_SMS)
+                            )
+                        }) { Text("Grant") }
+                    }
+                )
+            }
 
             // ── Sync interval ──────────────────────────────────────────────
             SectionHeader("Sync Frequency")

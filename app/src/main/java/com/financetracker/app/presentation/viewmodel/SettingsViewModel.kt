@@ -7,7 +7,7 @@ import com.financetracker.app.data.repository.SyncStatusRepository
 import com.financetracker.app.service.gmail.ImapCredentialsManager
 import com.financetracker.app.service.gmail.ImapGmailFetcher
 import com.financetracker.app.service.gmail.ImapResult
-import dagger.hilt.android.lifecycle.HiltViewModel
+import com.financetracker.app.workers.GmailFetchWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -85,4 +85,8 @@ class SettingsViewModel @Inject constructor(
     fun setSmsEnabled(enabled: Boolean) { _smsEnabled.value = enabled }
 
     fun setSyncInterval(hours: Int) { _syncInterval.value = hours }
+
+    fun fetchGmailNow() {
+        GmailFetchWorker.enqueueOneTime(context)
+    }
 }

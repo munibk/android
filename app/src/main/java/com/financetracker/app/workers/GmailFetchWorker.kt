@@ -47,6 +47,17 @@ class GmailFetchWorker @AssistedInject constructor(
                 request
             )
         }
+
+        fun enqueueOneTime(context: Context) {
+            val request = OneTimeWorkRequestBuilder<GmailFetchWorker>()
+                .setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                )
+                .build()
+            WorkManager.getInstance(context).enqueue(request)
+        }
     }
 
     override suspend fun doWork(): Result {
