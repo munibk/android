@@ -7,6 +7,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class AuthMethod { IMAP, OAUTH }
+
 /**
  * Stores and retrieves Gmail IMAP credentials using EncryptedSharedPreferences
  * backed by Android Keystore. Credentials are never stored in plain text.
@@ -16,10 +18,11 @@ class ImapCredentialsManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     companion object {
-        private const val PREFS_FILE   = "gmail_credentials"
-        private const val KEY_EMAIL    = "gmail_email"
-        private const val KEY_PASSWORD = "gmail_app_password"
+        private const val PREFS_FILE         = "gmail_credentials"
+        private const val KEY_EMAIL          = "gmail_email"
+        private const val KEY_PASSWORD       = "gmail_app_password"
         private const val KEY_SYNC_FROM_YEAR = "gmail_sync_from_year"
+        private const val KEY_AUTH_METHOD    = "gmail_auth_method"
     }
 
     private val masterKey by lazy {
@@ -79,5 +82,14 @@ class ImapCredentialsManager @Inject constructor(
             .remove(KEY_EMAIL)
             .remove(KEY_PASSWORD)
             .apply()
+    }
+
+    fun saveAuthMethod(method: AuthMethod) {
+        prefs.edit().putString(KEY_AUTH_METHOD, method.name).apply()
+    }
+
+    fun getAuthMethod(): AuthMethod {
+        val raw = prefs.getString(KEY_AUTH_METHOD, AuthMethod.IMAP.name)
+        return try { AuthMethod.valueOf(raw ?: AuthMethod.IMAP.name) } catch (e: Exception) { AuthMethod.IMAP }
     }
 }

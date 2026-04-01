@@ -137,6 +137,9 @@ dependencies {
     implementation("com.sun.mail:android-mail:1.6.7")
     implementation("com.sun.mail:android-activation:1.6.7")
 
+    // Google Sign-In (OAuth for Gmail)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
+
     // Security Crypto (EncryptedSharedPreferences) — 1.1.0-alpha06 adds MasterKey.Builder
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 

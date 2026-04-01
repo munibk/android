@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.financetracker.app.data.repository.SyncStatusRepository
+import com.financetracker.app.service.gmail.AuthMethod
+import com.financetracker.app.service.gmail.GmailOAuthManager
+import com.financetracker.app.service.gmail.GmailRestFetcher
 import com.financetracker.app.service.gmail.ImapCredentialsManager
 import com.financetracker.app.service.gmail.ImapGmailFetcher
 import com.financetracker.app.service.gmail.ImapResult
@@ -24,6 +27,7 @@ sealed class ConnectionTestResult {
 data class SettingsUiState(
     val gmailEmail: String = "",
     val hasCredentials: Boolean = false,
+    val authMethod: AuthMethod = AuthMethod.IMAP,
     val connectionTest: ConnectionTestResult = ConnectionTestResult.Idle,
     val smsEnabled: Boolean = true,
     val syncIntervalHours: Int = 6,
@@ -34,7 +38,9 @@ data class SettingsUiState(
 class SettingsViewModel @Inject constructor(
     @ApplicationContext private val context: Context,
     private val credentialsManager: ImapCredentialsManager,
+    private val oauthManager: GmailOAuthManager,
     private val gmailFetcher: ImapGmailFetcher,
+    private val gmailRestFetcher: GmailRestFetcher,
     private val syncStatusRepo: SyncStatusRepository
 ) : ViewModel() {
 
@@ -42,28 +48,45 @@ class SettingsViewModel @Inject constructor(
     private val _smsEnabled     = MutableStateFlow(true)
     private val _syncInterval   = MutableStateFlow(6)
     private val _syncFromYear   = MutableStateFlow(credentialsManager.getSyncFromYear())
+    private val _authMethod     = MutableStateFlow(credentialsManager.getAuthMethod())
 
     val uiState: StateFlow<SettingsUiState> = combine(
         _connectionTest,
         _smsEnabled,
         _syncInterval,
-        _syncFromYear
-    ) { test, sms, interval, year ->
+        _syncFromYear,
+        _authMethod
+    ) { test, sms, interval, year, method ->
         SettingsUiState(
-            gmailEmail        = credentialsManager.getEmail() ?: "",
-            hasCredentials    = credentialsManager.hasCredentials(),
+            gmailEmail        = if (method == AuthMethod.OAUTH) oauthManager.getEmail() ?: ""
+                                else credentialsManager.getEmail() ?: "",
+            hasCredentials    = if (method == AuthMethod.OAUTH) oauthManager.hasCredentials()
+                                else credentialsManager.hasCredentials(),
+            authMethod        = method,
             connectionTest    = test,
             smsEnabled        = sms,
             syncIntervalHours = interval,
             syncFromYear      = year
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), SettingsUiState(
-        gmailEmail     = credentialsManager.getEmail() ?: "",
-        hasCredentials = credentialsManager.hasCredentials(),
-        syncFromYear   = credentialsManager.getSyncFromYear()
-    ))
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        run {
+            val method = credentialsManager.getAuthMethod()
+            SettingsUiState(
+                gmailEmail     = if (method == AuthMethod.OAUTH) oauthManager.getEmail() ?: ""
+                                 else credentialsManager.getEmail() ?: "",
+                hasCredentials = if (method == AuthMethod.OAUTH) oauthManager.hasCredentials()
+                                 else credentialsManager.hasCredentials(),
+                authMethod     = method,
+                syncFromYear   = credentialsManager.getSyncFromYear()
+            )
+        }
+    )
 
     val syncStatus = syncStatusRepo.status
+
+    // ── IMAP ──────────────────────────────────────────────────────────────
 
     fun saveGmailCredentials(email: String, appPassword: String) {
         credentialsManager.saveCredentials(email, appPassword)
@@ -77,16 +100,51 @@ class SettingsViewModel @Inject constructor(
     fun testConnection(email: String, appPassword: String) {
         viewModelScope.launch {
             _connectionTest.value = ConnectionTestResult.Testing
-            // Temporarily save to test
             credentialsManager.saveCredentials(email, appPassword)
             val result = gmailFetcher.fetchEmails(lastSyncMs = 0L, maxRetries = 1)
             _connectionTest.value = when (result) {
-                is ImapResult.Success    -> ConnectionTestResult.Success
-                is ImapResult.AuthError  -> ConnectionTestResult.Failure(result.message)
+                is ImapResult.Success      -> ConnectionTestResult.Success
+                is ImapResult.AuthError    -> ConnectionTestResult.Failure(result.message)
                 is ImapResult.NetworkError -> ConnectionTestResult.Failure(result.message)
             }
         }
     }
+
+    // ── OAuth ─────────────────────────────────────────────────────────────
+
+    fun onOAuthSignIn(email: String) {
+        oauthManager.saveEmail(email)
+        credentialsManager.saveAuthMethod(AuthMethod.OAUTH)
+        _authMethod.value = AuthMethod.OAUTH
+        _connectionTest.value = ConnectionTestResult.Idle
+    }
+
+    fun clearOAuthCredentials() {
+        oauthManager.clearCredentials()
+        credentialsManager.saveAuthMethod(AuthMethod.IMAP)
+        _authMethod.value = AuthMethod.IMAP
+        _connectionTest.value = ConnectionTestResult.Idle
+    }
+
+    fun testOAuthConnection() {
+        viewModelScope.launch {
+            _connectionTest.value = ConnectionTestResult.Testing
+            val result = gmailRestFetcher.testConnection()
+            _connectionTest.value = when (result) {
+                is ImapResult.Success      -> ConnectionTestResult.Success
+                is ImapResult.AuthError    -> ConnectionTestResult.Failure(result.message)
+                is ImapResult.NetworkError -> ConnectionTestResult.Failure(result.message)
+            }
+        }
+    }
+
+    fun switchAuthMethod(method: AuthMethod) {
+        credentialsManager.saveAuthMethod(method)
+        _authMethod.value = method
+        _connectionTest.value = ConnectionTestResult.Idle
+    }
+
+    // ── Shared ────────────────────────────────────────────────────────────
 
     fun setSmsEnabled(enabled: Boolean) { _smsEnabled.value = enabled }
 

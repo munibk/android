@@ -33,6 +33,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financetracker.app.data.repository.SyncState
 import com.financetracker.app.presentation.viewmodel.ConnectionTestResult
 import com.financetracker.app.presentation.viewmodel.SettingsViewModel
+import com.financetracker.app.service.gmail.AuthMethod
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.Scope
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -93,23 +97,50 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            // ── Gmail IMAP section ──────────────────────────────────────────
-            SectionHeader("Gmail IMAP")
-            GmailSection(
-                hasCredentials = state.hasCredentials,
-                currentEmail   = state.gmailEmail,
-                testResult     = state.connectionTest,
-                onSave         = { email, pass -> vm.saveGmailCredentials(email, pass) },
-                onTest         = { email, pass -> vm.testConnection(email, pass) },
-                onDisconnect   = { vm.clearGmailCredentials() }
-            )
+            // ── Gmail section ───────────────────────────────────────────────
+            SectionHeader("Gmail")
+
+            // Auth method picker
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                FilterChip(
+                    selected = state.authMethod == AuthMethod.IMAP,
+                    onClick  = { vm.switchAuthMethod(AuthMethod.IMAP) },
+                    label    = { Text("App Password") }
+                )
+                FilterChip(
+                    selected = state.authMethod == AuthMethod.OAUTH,
+                    onClick  = { vm.switchAuthMethod(AuthMethod.OAUTH) },
+                    label    = { Text("Google Sign-In") }
+                )
+            }
+
+            if (state.authMethod == AuthMethod.OAUTH) {
+                OAuthSection(
+                    hasCredentials = state.hasCredentials,
+                    connectedEmail = state.gmailEmail,
+                    testResult     = state.connectionTest,
+                    onSignedIn     = { email -> vm.onOAuthSignIn(email) },
+                    onTest         = { vm.testOAuthConnection() },
+                    onDisconnect   = { vm.clearOAuthCredentials() }
+                )
+            } else {
+                GmailSection(
+                    hasCredentials = state.hasCredentials,
+                    currentEmail   = state.gmailEmail,
+                    testResult     = state.connectionTest,
+                    onSave         = { email, pass -> vm.saveGmailCredentials(email, pass) },
+                    onTest         = { email, pass -> vm.testConnection(email, pass) },
+                    onDisconnect   = { vm.clearGmailCredentials() }
+                )
+            }
+
             if (state.hasCredentials) {
                 var syncQueued by remember { mutableStateOf(false) }
-                // Reset syncQueued when sync finishes
                 LaunchedEffect(syncStatus.state) {
-                    if (syncStatus.state != com.financetracker.app.data.repository.SyncState.RUNNING) {
-                        syncQueued = false
-                    }
+                    if (syncStatus.state != SyncState.RUNNING) syncQueued = false
                 }
                 ListItem(
                     headlineContent = { Text(if (syncQueued) "Sync queued…" else "Fetch Gmail Now") },
@@ -256,6 +287,105 @@ fun SettingsScreen(
                 supportingContent = { Text("Version 1.0 — Built with Kotlin + Jetpack Compose") }
             )
         }
+    }
+}
+
+@Composable
+private fun OAuthSection(
+    hasCredentials: Boolean,
+    connectedEmail: String,
+    testResult: ConnectionTestResult,
+    onSignedIn: (String) -> Unit,
+    onTest: () -> Unit,
+    onDisconnect: () -> Unit
+) {
+    val context = LocalContext.current
+
+    val signInLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(Exception::class.java)
+            account?.email?.let { onSignedIn(it) }
+        } catch (e: Exception) { /* sign-in cancelled */ }
+    }
+
+    fun launchSignIn() {
+        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(Scope("https://mail.google.com/"))
+            .build()
+        val client = GoogleSignIn.getClient(context, gso)
+        // Always show account picker
+        client.signOut().addOnCompleteListener { signInLauncher.launch(client.signInIntent) }
+    }
+
+    ListItem(
+        headlineContent = {
+            Text(if (hasCredentials) "Connected: $connectedEmail" else "Not connected")
+        },
+        supportingContent = {
+            Text(
+                if (hasCredentials) "Reading Gmail via secure OAuth token"
+                else "Sign in with your Google account — no password stored"
+            )
+        },
+        leadingContent = {
+            Icon(
+                Icons.Default.AccountCircle,
+                contentDescription = null,
+                tint = if (hasCredentials) Color(0xFF43A047) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        },
+        trailingContent = {
+            if (hasCredentials) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    OutlinedButton(onClick = onTest) { Text("Test") }
+                    TextButton(
+                        onClick = onDisconnect,
+                        colors  = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) { Text("Disconnect") }
+                }
+            } else {
+                Button(onClick = ::launchSignIn) { Text("Sign in") }
+            }
+        }
+    )
+
+    when (testResult) {
+        is ConnectionTestResult.Testing ->
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Testing OAuth connection…")
+            }
+        is ConnectionTestResult.Success ->
+            Text(
+                "✓ OAuth connection successful",
+                color    = Color(0xFF43A047),
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        is ConnectionTestResult.Failure ->
+            Text(
+                "✗ ${testResult.message}",
+                color    = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        else -> {}
+    }
+
+    if (!hasCredentials) {
+        Text(
+            "Your Google account needs the Gmail scope. If prompted, tick \
+\"Read, compose, send and permanently delete all your email from Gmail\".",
+            style    = MaterialTheme.typography.bodySmall,
+            color    = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+        )
     }
 }
 

@@ -8,7 +8,10 @@ import com.financetracker.app.data.repository.CreditCardRepository
 import com.financetracker.app.data.repository.SyncStatusRepository
 import com.financetracker.app.data.repository.TransactionRepository
 import com.financetracker.app.service.classifier.CategoryClassifier
+import com.financetracker.app.service.gmail.AuthMethod
 import com.financetracker.app.service.gmail.GmailParser
+import com.financetracker.app.service.gmail.GmailRestFetcher
+import com.financetracker.app.service.gmail.ImapCredentialsManager
 import com.financetracker.app.service.gmail.ImapGmailFetcher
 import com.financetracker.app.service.gmail.ImapResult
 import dagger.assisted.Assisted
@@ -19,7 +22,9 @@ import java.util.concurrent.TimeUnit
 class GmailFetchWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted params: WorkerParameters,
-    private val fetcher: ImapGmailFetcher,
+    private val imapFetcher: ImapGmailFetcher,
+    private val restFetcher: GmailRestFetcher,
+    private val credentialsManager: ImapCredentialsManager,
     private val parser: GmailParser,
     private val transactionRepo: TransactionRepository,
     private val creditCardRepo: CreditCardRepository,
@@ -66,7 +71,14 @@ class GmailFetchWorker @AssistedInject constructor(
         val lastSync = inputData.getLong("last_sync_ms", 0L)
         val existingHashes = transactionRepo.getAllDedupHashes().toHashSet()
 
-        return when (val result = fetcher.fetchEmails(lastSync)) {
+        // Route to IMAP or Gmail REST API based on saved auth method
+        val fetchResult = if (credentialsManager.getAuthMethod() == AuthMethod.OAUTH) {
+            restFetcher.fetchEmails(lastSync)
+        } else {
+            imapFetcher.fetchEmails(lastSync)
+        }
+
+        return when (val result = fetchResult) {
             is ImapResult.Success -> {
                 val total = result.emails.size
                 var processed = 0

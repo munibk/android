@@ -79,4 +79,9 @@
 
     </application>
 
+    <!-- Allow Google Sign-In to resolve the Google account picker Activity -->
+    <queries>
+        <package android:name="com.google.android.gms" />
+    </queries>
+
 </manifest>
