@@ -1,12 +1,12 @@
 package com.financetracker.app.presentation.ui.settings
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,6 +26,9 @@ import androidx.compose.ui.unit.dp
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.financetracker.app.data.repository.SyncState
 import com.financetracker.app.presentation.viewmodel.ConnectionTestResult
@@ -44,8 +47,7 @@ fun SettingsScreen(
     val state      by vm.uiState.collectAsStateWithLifecycle()
     val syncStatus by vm.syncStatus.collectAsStateWithLifecycle()
     val context    = LocalContext.current
-
-    val activity = LocalActivity.current
+    val activity   = context as? Activity
 
     var hasSmsPermission by remember {
         mutableStateOf(
@@ -53,10 +55,10 @@ fun SettingsScreen(
                     PackageManager.PERMISSION_GRANTED
         )
     }
-    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
                 hasSmsPermission = ContextCompat.checkSelfPermission(
                     context, Manifest.permission.RECEIVE_SMS
                 ) == PackageManager.PERMISSION_GRANTED
